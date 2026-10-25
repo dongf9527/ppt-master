@@ -1,9 +1,9 @@
 # Claude Code WSL 部署与本地模型接入方案
 
-> 文档版本：v1.1 ｜ 整理日期：2026-10-26
+> 文档版本：v1.2 ｜ 整理日期：2026-10-26
 > 目标环境：Windows 10/11 + WSL2（Ubuntu 22.04 / 24.04）
 > 接入对象：WSL 内**现有**的 Ollama（及 vLLM），模型 **Qwen3.5:9B**（工作站已预装）
-> 变更记录：v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
+> 变更记录：v1.2 6.2 节验证步骤按实机取证重写（environ 取证、加载快照坑、api/show 前缀键与原生上限辨析），8.1 回填 qwen3.5:9b@64k+q8_0 实测显存（KV 仅 ~1 GiB，混合注意力架构）；v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
 > 配套文档：`../评估方案/PPT-Master评估与企业模板复用方案.md`、`../GitHub协作规则.md`
 > 说明：本文所有命令除特别注明"Windows 侧"外，均在 WSL 终端内执行。
 
@@ -262,18 +262,40 @@ ollama serve
 
 > ⚠️ 写在 `~/.bashrc` 里的 `export` 只对"手动敲 `ollama serve`"启动的进程生效，**不会**作用于 systemd 托管的 ollama 服务——这是"明明配了却没生效"的最常见原因。方式一与方式三二选一，不要混用。
 
-**第三步｜验证配置已生效**：
+**第三步｜验证配置已生效（按 ①→④ 顺序，① 是取证）**：
 
 ```bash
-# WSL：重启服务后查日志，应能看到 flash attention / kv cache 相关字样
-journalctl -u ollama -n 100 --no-pager | grep -iE 'flash|kv|context'
+# ① 取证：变量是否真的进入了服务进程（最可靠的一步；无输出 = 没进服务进程，配置白设）
+sudo cat /proc/$(pidof ollama)/environ | tr '\0' '\n' | grep OLLAMA
 
-# 让模型加载一次再查看驻留状态：CONTEXT 列应显示 65536
+# ② 改完必须重载并冷启动：ollama ps 的 CONTEXT 是"加载时快照"，
+#    不重启服务就复验，会被 4096 的旧实例假象骗到
+sudo systemctl daemon-reload && sudo systemctl restart ollama
 ollama run qwen3.5:9b "hi" >/dev/null 2>&1 && ollama ps
+#    预期：CONTEXT = 65536，UNTIL ≈ 2 hours（KEEP_ALIVE 生效）
 
-# 直接从模型元数据读上下文长度
-curl -s localhost:11434/api/show -d '{"model":"qwen3.5:9b"}' | grep -o '"context_length":[0-9]*'
+# ③ 日志核对：找 llama-server 启动参数与 KV cache 两行
+journalctl -u ollama -n 400 --no-pager | grep -iE 'n_ctx_slot|type_k|type_v|q8_0|flash'
+#    预期：-c 65536 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on
+#           llama_context: flash_attn = enabled
+#           llama_kv_cache: ... K (q8_0): ... MiB, V (q8_0): ... MiB
+#           n_ctx_slot = 65536
+
+# ④ 模型元数据核对：model_info 的键带架构前缀（如 qwen35.context_length），
+#    旧的 grep -o '"context_length":[0-9]*' 会因前缀漏匹配，改用 json 展开后模糊 grep
+curl -s localhost:11434/api/show -d '{"model":"qwen3.5:9b"}' \
+  | python3 -m json.tool | grep -iE 'context_length|num_ctx|"parameters"'
+#    注意：context_length 在这里是 GGUF 原生上限（qwen3.5 = 262144），
+#    不代表运行时生效值——运行时以 ② 的 CONTEXT 列与 ③ 的 n_ctx_slot 为准。
+#    若 "parameters" 字段出现 num_ctx，说明 Modelfile 钉死了上下文，会盖过环境变量，
+#    处理方式见 6.3 派生模型。
 ```
+
+> 实测参考（RTX 5080 工作站，2026-10）：`ollama ps` → `6.9 GB ｜ 100% GPU ｜ 65536 ｜ 2 hours`；KV cache 实测 `llama_kv_cache: size = 1088.00 MiB (65536 cells, 8 layers), K (q8_0): 544.00 MiB, V (q8_0): 544.00 MiB`。
+
+> ⚠️ 两条易误读的日志：
+> ① `warmup: flash attention is enabled`——新版 Ollama 对支持的模型**默认开启 FA**，四个参数全部未生效时这条日志也会出现，**不能单独作为 OLLAMA_FLASH_ATTENTION 已生效的证据**，请以 ②③ 为准；
+> ② `KV cache shifting is not supported` / `the context does not support partial sequence removal`——qwen3.5 是**混合注意力（全注意力层与线性/滑窗层交替）架构**，llama.cpp 对这类缓存不做平移与部分移除，改由 context checkpoints 机制兜底，属架构固有提示，**不是配置错误**。
 
 ### 6.3 确认模型就绪
 
@@ -469,6 +491,8 @@ Qwen3.5:9B 量化权重（q4_K_M）约 5.8 GiB；KV cache 每 token 约 144 KiB�
 
 结论：**16 GB 显存 + q8_0 KV 量化开 64k 上下文**是性价比最高的档位（本机 RTX 5080 16 GB 正处该档位）；12 GB 显存建议保守用 32k；24 GB 可尝试 128k 上下文或换 14B 级模型。
 
+> **实测校准（RTX 5080 工作站，qwen3.5:9b q4_K_M + 64k + q8_0 KV，2026-10）**：KV cache 实测仅 **1088 MiB**（65536 cells × 8 层，K/V 各 544 MiB），进程总量实测 **6.9 GB**——qwen3.5 为混合注意力架构，全量 KV 只由少数全注意力层承载，上表按"36 层全注意力"的估算明显偏保守，16 GB 卡实际占用约 43%，余量比上表更大。GGUF 元数据原生上限 262144，后续如需扩到 128k 显存依然充裕；但 64k 已覆盖 Claude Code + ppt-master 场景且 prefill 更快，推荐档位维持不变。
+
 ### 8.2 上下文相关的三个坑
 
 1. **Ollama 默认 num_ctx=4096**：症状是"上一轮交代的事下一轮就忘"，且不报任何错误（旧上下文被静默丢弃）。解法见 6.2/6.3 节，设完用会话内 `/context` 复核。
@@ -526,6 +550,7 @@ claude    # 在 ppt-master 目录启动（配置已指向本地模型）
 | 401/403/连接被拒 | 端口/地址错；Ollama 未监听 | `curl -s localhost:11434`；`lsof -i :11434` 查占用 |
 | **响应越来越慢（10s→80s 递增）** | 已知 bug（Ollama #13949）：Claude Code 周期性调用 `/v1/messages/count_tokens`，旧版 Ollama 不支持且反复重试拖垮请求处理 | 重启 `ollama serve` 可临时恢复；升级 Ollama 至修复版本 |
 | 模型"忘事"、答非所问 | 上下文仍为默认 4096 | 按 6.2 设 `OLLAMA_CONTEXT_LENGTH`，Modelfile 方式二选一 |
+| **四参数全部未生效**（ps 仍 4096、UNTIL 仍 5 分钟） | 环境变量没进 systemd 服务进程（bashrc/终端 export 对服务无效，或 override 漏了 daemon-reload/restart） | 取证：`sudo cat /proc/$(pidof ollama)/environ \| tr '\0' '\n' \| grep OLLAMA`；再按 6.2 方式一写 override.conf 并 `daemon-reload + restart`；旧实例是加载时快照，须重载后再验 |
 | 推理极慢、CPU 拉满 | GPU 未生效 | `ollama ps` 看 Processor 列；检查 `nvidia-smi`；更新 Windows 显卡驱动后 `wsl --shutdown` |
 | vLLM 工具调用失效（模型把工具调用当文字输出） | 缺 `--enable-auto-tool-choice --tool-call-parser hermes` | 补参数重启 vLLM |
 | CCR 报 upstream 超时 | vLLM 长思考超时 | `config.json` 中调大 `API_TIMEOUT_MS`（如 600000） |
