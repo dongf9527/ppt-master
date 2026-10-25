@@ -1,6 +1,6 @@
 # PPT Master 评估与企业模板复用方案
 
-> 文档版本：v1.0 ｜ 整理日期：2026-10-26 ｜ 配套文档：`GitHub协作规则.md`
+> 文档版本：v1.0 ｜ 整理日期：2026-10-26 ｜ 配套文档：`../GitHub协作规则.md`、`../部署方案/Claude-Code-WSL部署与本地模型接入方案.md`
 > 评估对象：[hugohe3/ppt-master](https://github.com/hugohe3/ppt-master)（v6.7.3，MIT License）
 > 本文依据 2026-10-24 时点的源码（102 个脚本、全部工作流文档）与社区公开资料整理。
 

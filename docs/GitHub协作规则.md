@@ -2,7 +2,7 @@
 
 > 文档版本：v1.0 ｜ 生效日期：2026-10-26
 > 适用范围：本项目全体成员及其驱动的 AI Agent（Claude Code、Codex CLI 等）
-> 关联文档：`PPT-Master评估与企业模板复用方案.md`
+> 关联文档：`评估方案/PPT-Master评估与企业模板复用方案.md`
 >
 > **仓库地址**：`https://github.com/dongf9527/ppt-master.git`
 > 协作仓库为新建空仓库；上游 `hugohe3/ppt-master` 保持只读参考，不直接向上游推送。
