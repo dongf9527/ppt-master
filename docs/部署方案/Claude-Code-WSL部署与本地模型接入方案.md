@@ -1,9 +1,9 @@
 # Claude Code WSL 部署与本地模型接入方案
 
-> 文档版本：v1.5 ｜ 整理日期：2026-10-26
+> 文档版本：v1.6 ｜ 整理日期：2026-10-26
 > 目标环境：Windows 10/11 + WSL2（Ubuntu 22.04 / 24.04）
 > 接入对象：WSL 内**现有**的 Ollama（及 vLLM），模型 **Qwen3.5:9B**（工作站已预装）
-> 变更记录：v1.5 6.5 第④层回填实机复验结果（/context 23.2k/65.5k，窗口校准生效，四层验收闭环），8.2 第四坑补实机闭环与 autocompact buffer 余量说明，10 章对应排查行补复验标准；v1.4 6.4 方式二补全三档模型映射与 CLAUDE_CODE_MAX_CONTEXT_TOKENS（校准 CC 对自定义模型的 200k 假设），8.2 增第四坑，10 章增对应排查行，修正 6.5 hello.txt 预期字节数；v1.3 第 10 章新增“Claude Code 多份安装（Windows interop 抢占 PATH）”排查行；v1.2 6.2 节验证步骤按实机取证重写（environ 取证、加载快照坑、api/show 前缀键与原生上限辨析），8.1 回填 qwen3.5:9b@64k+q8_0 实测显存（KV 仅 ~1 GiB，混合注意力架构）；v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
+> 变更记录：v1.6 9.2 修正示例 PPTX 来源说明（仓库本身不带示例，需自备或从 ppt-master-examples 下载）并指向学习路径文档；v1.5 6.5 第④层回填实机复验结果（/context 23.2k/65.5k，窗口校准生效，四层验收闭环），8.2 第四坑补实机闭环与 autocompact buffer 余量说明，10 章对应排查行补复验标准；v1.4 6.4 方式二补全三档模型映射与 CLAUDE_CODE_MAX_CONTEXT_TOKENS（校准 CC 对自定义模型的 200k 假设），8.2 增第四坑，10 章增对应排查行，修正 6.5 hello.txt 预期字节数；v1.3 第 10 章新增“Claude Code 多份安装（Windows interop 抢占 PATH）”排查行；v1.2 6.2 节验证步骤按实机取证重写（environ 取证、加载快照坑、api/show 前缀键与原生上限辨析），8.1 回填 qwen3.5:9b@64k+q8_0 实测显存（KV 仅 ~1 GiB，混合注意力架构）；v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
 > 配套文档：`../评估方案/PPT-Master评估与企业模板复用方案.md`、`../GitHub协作规则.md`
 > 说明：本文所有命令除特别注明"Windows 侧"外，均在 WSL 终端内执行。
 
@@ -551,7 +551,9 @@ pip install -r requirements.txt
 claude    # 在 ppt-master 目录启动（配置已指向本地模型）
 ```
 
-会话内输入：`用 Edit Native PPTX 流程，把 projects/ 下任一示例 PPTX 的标题页文字替换为"部署验收测试"`。能走完"解析 → 选页 → 回填 → 导出"闭环且产出文件可正常打开，即整条链路验收通过。建议按协作规则把测试记录写入 `docs/测试记录-<日期>-WSL部署.md` 并提交。
+会话内输入（源 PPTX 需自备，或先从 `github.com/hugohe3/ppt-master-examples` 下载示例复制进 `projects/`——仓库本身不带示例文件）：`用 Edit Native PPTX 流程，把 projects/ 下任一示例 PPTX 的标题页文字替换为"部署验收测试"`。能走完"解析 → 选页 → 回填 → 导出"闭环且产出文件可正常打开，即整条链路验收通过。建议按协作规则把测试记录写入 `docs/测试记录-<日期>-WSL部署.md` 并提交。
+
+> 部署验收后的系统化上手（文档地图、四阶段学习路径、提示词模板库、排障查表）见 `../学习路径/PPT-Master企业级PPT学习路径.md`。
 
 ---
 
