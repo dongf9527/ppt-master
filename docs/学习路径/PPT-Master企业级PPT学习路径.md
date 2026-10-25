@@ -1,6 +1,6 @@
 # PPT Master 企业级 PPT 学习路径
 
-> 文档版本：v1.0 ｜ 整理日期：2026-10-26
+> 文档版本：v1.1 ｜ 整理日期：2026-10-26 ｜ 变更：v1.1 阶段 1 接入《冒烟测试示例选型》（示例不再海选）；v1.0 初版
 > 适用读者：已完成《部署方案》路线 A 部署并通过四层验收的企业工作站用户（Claude Code + Ollama + qwen3.5:9b）
 > 目标：用最短时间从"环境就绪"走到"稳定产出企业级 PPT"
 > 配套文档：`../部署方案/Claude-Code-WSL部署与本地模型接入方案.md`（环境）、`../评估方案/PPT-Master评估与企业模板复用方案.md`（选型依据）
@@ -88,7 +88,7 @@
 
 **读**：`docs/zh/getting-started.md` 全文（重点：配置安装目录与工作目录、做出第一份 deck、快速模式三节，约 15 分钟）；`technical-design.md` 的"路线判定速查表"一节（约 5 分钟）。建立三个核心概念：`projects/<name>` 是每个任务的工作区、最终交付在 `projects/<name>/exports/`、三条路线按"要不要保留原设计"来分。
 
-**做**：准备任意一份源 PPTX（自备或从 `github.com/hugohe3/ppt-master-examples` 下载，仓库本身不带示例），复制进 `projects/` 后在 claude 会话输入：
+**做**：准备任意一份源 PPTX——**不必海选**，直接用《冒烟测试示例选型》主推三例之一（首选 `ppt169_dujiangyan_zh_sparse`，14 页/0.73 MB，最稳），获取方式见该文档第 6 节。复制进 `projects/` 后在 claude 会话输入：
 
 ```text
 用 ppt-master 的 Edit Native PPTX 流程处理 projects/demo.pptx：
