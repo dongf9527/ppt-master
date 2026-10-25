@@ -10,9 +10,9 @@
 
 PPT Master 是一套运行在 AI Agent 工具（Claude Code、Codex CLI、Cursor 等）里的 Python 技能包（skill），通过 SVG → DrawingML 管线把文档或主题转化为**原生可编辑的 .pptx**：真母版、真版式继承、原生形状、数据驱动图表与表格，而不是扁平贴图。项目约 67k stars / 5.3k forks，MIT 协议，迭代活跃，是当前 PPT 生成赛道中对"PowerPoint 原生对象模型"还原最深的开源项目。
 
-对企业而言，它最有价值的不是"一键生成 PPT"，而是**模板资产化能力**：把企业已有的 `.pptx` 模板、VI 手册提炼为可复用的 Brand / Style / Layout / Deck 模板工作区，此后每一份新 PPT 都能自动继承企业母版与版式。本文第 3 章给出与本地 Ollama / vLLM + Qwen3:8B 配合的应用环境方案，第 5 章给出企业模板复用的三条落地路径。
+对企业而言，它最有价值的不是"一键生成 PPT"，而是**模板资产化能力**：把企业已有的 `.pptx` 模板、VI 手册提炼为可复用的 Brand / Style / Layout / Deck 模板工作区，此后每一份新 PPT 都能自动继承企业母版与版式。本文第 3 章给出与本地 Ollama / vLLM + Qwen3.5:9B 配合的应用环境方案，第 5 章给出企业模板复用的三条落地路径。
 
-**结论先行**：值得引入。建议按"先回填救急 → 再模板资产化 → 后规模化"三步走；模型接入首选 Claude Code + Ollama（Anthropic 兼容 API）的组合，团队共享 GPU 时改用 vLLM + 代理桥接；同时要对 Qwen3:8B 的能力边界建立诚实预期（见 3.5 节）。
+**结论先行**：值得引入。建议按"先回填救急 → 再模板资产化 → 后规模化"三步走；模型接入首选 Claude Code + Ollama（Anthropic 兼容 API）的组合，团队共享 GPU 时改用 vLLM + 代理桥接；同时要对 Qwen3.5:9B 的能力边界建立诚实预期（见 3.5 节）。
 
 ---
 
@@ -51,11 +51,11 @@ PPT Master 是一套运行在 AI Agent 工具（Claude Code、Codex CLI、Cursor
 
 ---
 
-## 3. 应用环境与工具选型（接入本地 Ollama / vLLM + Qwen3:8B）
+## 3. 应用环境与工具选型（接入本地 Ollama / vLLM + Qwen3.5:9B）
 
 ### 3.1 架构原理：模型接入在 Agent 宿主层解决，而非 skill 层
 
-首先澄清一个关键认知：**PPT Master 本身不含 LLM 调用层，也不需要为它单独适配本地模型**。它是一组 Markdown 工作流文档 + Python 后处理脚本的"skill"，谁来"读懂并执行"这些工作流，取决于你把它放进哪个 Agent 宿主。宿主负责三件事：读文件、写文件、执行命令；模型（Qwen3:8B）是宿主的"大脑"。因此本地化改造的全部工作 = **给 Agent 宿主接上本地推理服务（Ollama 或 vLLM）**，PPT Master 零改动。
+首先澄清一个关键认知：**PPT Master 本身不含 LLM 调用层，也不需要为它单独适配本地模型**。它是一组 Markdown 工作流文档 + Python 后处理脚本的"skill"，谁来"读懂并执行"这些工作流，取决于你把它放进哪个 Agent 宿主。宿主负责三件事：读文件、写文件、执行命令；模型（Qwen3.5:9B）是宿主的"大脑"。因此本地化改造的全部工作 = **给 Agent 宿主接上本地推理服务（Ollama 或 vLLM）**，PPT Master 零改动。
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -69,7 +69,7 @@ PPT Master 是一套运行在 AI Agent 工具（Claude Code、Codex CLI、Cursor
 │  本地推理服务                                        │
 │  方案A：Ollama（:11434，原生 Anthropic 兼容 API）     │
 │  方案B：vLLM（:8000，OpenAI 兼容 API，可加代理桥接）   │
-│  模型：Qwen3:8B                                      │
+│  模型：Qwen3.5:9B                                    │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -78,7 +78,7 @@ PPT Master 是一套运行在 AI Agent 工具（Claude Code、Codex CLI、Cursor
 | 宿主 | 本地模型接入方式 | 与 PPT Master 的契合度 | 结论 |
 |---|---|---|---|
 | **Claude Code** | Ollama 官方集成：`ollama launch claude`，或手工设 `ANTHROPIC_BASE_URL=http://localhost:11434`；vLLM 场景经 claude-code-router / LiteLLM 桥接 | **最高**——官方开发与测试最充分的环境，skill 插件体系完善 | **首选** |
-| **Codex CLI** | Ollama 官方集成：`ollama launch codex` / `codex --oss -m qwen3:8b`；vLLM 走 `~/.codex/config.toml` 的 `model_providers`（OpenAI 兼容） | 官方兼容列表成员；ppt-master 的 image-to-pptx 路线明确标注 Codex 支持 | 备选首选 |
+| **Codex CLI** | Ollama 官方集成：`ollama launch codex` / `codex --oss -m qwen3.5:9b`；vLLM 走 `~/.codex/config.toml` 的 `model_providers`（OpenAI 兼容） | 官方兼容列表成员；ppt-master 的 image-to-pptx 路线明确标注 Codex 支持 | 备选首选 |
 | **Qwen Code** | 原生支持 OpenAI 兼容端点，对 Qwen 家族模型天然亲和 | Gemini CLI 分支，可作通用文件型 Agent 使用 | 备选 |
 | **OpenCode** | 原生支持 Ollama / OpenAI 兼容 | 通用 Agent | 备选 |
 | **Cline / Roo Code（VS Code）** | 内置 Ollama provider | IDE 内使用，适合已用 VS Code 的团队 | 备选 |
@@ -92,32 +92,32 @@ PPT Master 是一套运行在 AI Agent 工具（Claude Code、Codex CLI、Cursor
 | 定位 | 个人工作站 / 单机易用 | 团队共享 GPU 服务器 / 高吞吐 |
 | 启动方式 | 一条命令，自动管理模型文件 | 需手动配置参数，适合长驻服务 |
 | API 格式 | 同时提供 **Anthropic 兼容**与 OpenAI 兼容端点（Claude Code 可直连，无需桥接） | OpenAI 兼容；接 Claude Code 需经 claude-code-router 或 LiteLLM 转换 |
-| 工具调用 | 对 qwen3 自动处理 | 必须显式开启：`--enable-auto-tool-choice --tool-call-parser hermes` |
-| 上下文管理 | 默认值偏小，**必须显式调大**（官方建议跑 Claude Code / Codex 用 64k+） | 启动参数 `--max-model-len` 控制；Qwen3-8B 原生 32k，YaRN 扩展至 131k |
+| 工具调用 | 对 qwen3.5 自动处理 | 必须显式开启：`--enable-auto-tool-choice --tool-call-parser hermes` |
+| 上下文管理 | 默认值偏小，**必须显式调大**（官方建议跑 Claude Code / Codex 用 64k+） | 启动参数 `--max-model-len` 控制，显存富余可按模型的 YaRN 支持扩展 |
 | 并发 | 单用户为主 | continuous batching，多用户友好 |
 
 **结论**：个人或小规模试点用 **Ollama**（零桥接成本）；团队共享 GPU、需要并发服务时用 **vLLM**。
 
 ### 3.4 推荐组合与关键配置
 
-**组合一（首选，单机）：Claude Code + Ollama + Qwen3:8B**
+**组合一（首选，单机）：Claude Code + Ollama + Qwen3.5:9B**
 
 ```bash
-# 1. 安装与拉模型
-ollama pull qwen3:8b
+# 1. 拉模型（本机已预装则跳过）
+ollama pull qwen3.5:9b
 
 # 2. 调大上下文后启动（跑 PPT Master 建议 ≥32k，官方对 Agent 场景建议 64k+）
 export OLLAMA_CONTEXT_LENGTH=65536
 ollama serve
 
 # 3a. 一键方式：Ollama 官方集成
-ollama launch claude        # 在选择器中选 qwen3:8b
+ollama launch claude        # 在选择器中选 qwen3.5:9b
 
 # 3b. 手工方式：环境变量直连 Anthropic 兼容端点
 export ANTHROPIC_BASE_URL=http://localhost:11434
 export ANTHROPIC_AUTH_TOKEN=ollama
-export ANTHROPIC_API_KEY=""
-claude --model qwen3:8b
+# 注意：只设 ANTHROPIC_AUTH_TOKEN，勿再设 ANTHROPIC_API_KEY（两者共存会报 Auth conflict）
+claude --model qwen3.5:9b
 
 # 4. 在 Claude Code 中打开 ppt-master 目录，开始使用
 cd ppt-master
@@ -128,7 +128,7 @@ claude
 
 ```bash
 # 1. 起 vLLM 服务（工具调用与上下文长度两个参数不可省）
-vllm serve Qwen/Qwen3-8B \
+vllm serve Qwen/Qwen3.5-9B \
   --max-model-len 32768 \
   --enable-auto-tool-choice --tool-call-parser hermes \
   --gpu-memory-utilization 0.90
@@ -136,9 +136,9 @@ vllm serve Qwen/Qwen3-8B \
 # 2. 安装桥接层，把 Claude Code 的 Anthropic 格式请求翻译为 vLLM 的 OpenAI 格式
 npm install -g @musistudio/claude-code-router
 # ~/.claude-code-router/config.json 中配置 Provider：
-#   name: "vllm-qwen3-8b"
+#   name: "vllm-qwen35"
 #   api_base_url: "http://<gpu-server>:8000/v1/chat/completions"
-#   models: ["Qwen/Qwen3-8B"]
+#   models: ["Qwen/Qwen3.5-9B"]
 # 启动：ccr code
 ```
 
@@ -146,10 +146,10 @@ npm install -g @musistudio/claude-code-router
 
 ```bash
 # Ollama 快捷方式
-codex --oss -m qwen3:8b
+codex --oss -m qwen3.5:9b
 
 # vLLM：~/.codex/config.toml
-# model = "Qwen/Qwen3-8B"
+# model = "Qwen/Qwen3.5-9B"
 # model_provider = "my-vllm"
 # [model_providers.my-vllm]
 # name = "vLLM"
@@ -157,26 +157,26 @@ codex --oss -m qwen3:8b
 # wire_api = "chat"        # vLLM 版本较旧时用 chat；新版本支持 responses 可改
 ```
 
-**硬件参考**：Qwen3-8B 4bit 量化权重约 5–6 GB；16 GB 显存可流畅跑 32k 上下文；要开到 64k+ 上下文建议 24 GB 显存（配合 KV cache 量化）。CPU 推理可跑通但 Agent 循环延迟显著，不推荐用于生产。
+**硬件参考**：Qwen3.5:9B 4bit 量化权重约 6 GB；16 GB 显存可流畅跑 32k 上下文，配合 KV cache 量化（q8_0）可开 64k 上下文（详见《部署方案》第 8 章）。CPU 推理可跑通但 Agent 循环延迟显著，不推荐用于生产。
 
-### 3.5 Qwen3:8B 的能力边界与缓解策略（必读）
+### 3.5 Qwen3.5:9B 的能力边界与缓解策略（必读）
 
-必须诚实面对：**PPT Master 的产出上限由模型决定**。官方推荐 Kimi K3 / Claude 量级（~1M 上下文）的大模型，而 Qwen3:8B 是 32k 原生上下文的 8B 模型，两者存在代差。以下是现实的差距判断与工程缓解手段：
+必须诚实面对：**PPT Master 的产出上限由模型决定**。官方推荐 Kimi K3 / Claude 量级（~1M 上下文）的大模型，而 Qwen3.5:9B 是 9B 级本地模型，上下文与通用能力都有限，两者存在代差。以下是现实的差距判断与工程缓解手段：
 
 **预期差距**：
 
 - 完整 Default 流程需读入 SKILL.md + 路由 + 工作流 + 多个 reference 文档，再加源材料，32k 上下文可能吃紧；
-- 整页 SVG 创作（布局 + 文案 + 视觉）对 8B 模型的设计能力和长输出稳定性要求高，产出更依赖人工打磨；
+- 整页 SVG 创作（布局 + 文案 + 视觉）对 9B 级模型的设计能力和长输出稳定性要求高，产出更依赖人工打磨；
 - 多步 Agent 循环中，小模型偶发"只规划不执行"或卡在思考态（社区已有多起报告，可通过关闭 thinking 模式缓解）。
 
 **缓解策略（按优先级）**：
 
-1. **优先走 Edit Native PPTX 路线（第 5 章路径 A）**。"往现有模板里填内容"是三条路线中生成自由度最低、最依赖模型自由发挥也最少的路线——页面结构、版式、设计都来自源文件，模型只做选页和替换文字，8B 模型的胜任度最高。这恰好与企业"复用模板"的主诉求重合。
+1. **优先走 Edit Native PPTX 路线（第 5 章路径 A）**。"往现有模板里填内容"是三条路线中生成自由度最低、最依赖模型自由发挥也最少的路线——页面结构、版式、设计都来自源文件，模型只做选页和替换文字，9B 级模型的胜任度最高。这恰好与企业"复用模板"的主诉求重合。
 2. **用 Quick 模式减少上下文负担**：`"快速生成一份 5 页 PPT，不用跟我确认"` 会跳过交互确认与持久规划，读入的技能文件更少。
 3. **控制任务粒度**：单次生成页数控制在 5–8 页；长材料先让模型分段提炼再生成；一次只做一个项目。
 4. **上下文务必调大**：Ollama 默认上下文远小于 32k，跑本工作流前必须按 3.4 节显式设置，否则会出现"读到一半忘前面"的典型症状。
-5. **分层路由（进阶）**：claude-code-router 支持按任务类型切换模型——规划/创作阶段用云端大模型（Kimi/Claude），机械执行阶段（文件转换、脚本调用、格式修补）用本地 Qwen3:8B，兼顾质量、成本与数据安全。
-6. **图像与语音取舍**：Qwen3:8B 不出图。配图改用 `image_search.py` 网络图源（零配置可用）或用户自带素材；旁白 TTS 如需接入，PPT Master 已原生支持 Qwen TTS API（`--provider qwen`，DashScope 云端）。
+5. **分层路由（进阶）**：claude-code-router 支持按任务类型切换模型——规划/创作阶段用云端大模型（Kimi/Claude），机械执行阶段（文件转换、脚本调用、格式修补）用本地 Qwen3.5:9B，兼顾质量、成本与数据安全。
+6. **图像与语音取舍**：本地 9B 模型不出图。配图改用 `image_search.py` 网络图源（零配置可用）或用户自带素材；旁白 TTS 如需接入，PPT Master 已原生支持 Qwen TTS API（`--provider qwen`，DashScope 云端）。
 7. **硬件允许时升档**：Qwen3 系列 14B / 32B 对多步 Agent 工作流的稳定性提升显著；如共享 GPU 预算允许，优先升模型而不是调流程。
 
 ---
@@ -223,7 +223,7 @@ PPT Master 把"复用企业模板"设计为三大主线之一，提供三条路�
 
 **边界**：不能新增母版/版式结构、不能改页面尺寸——需要新结构时走路径 B。
 
-**模型压力**：低。选页与文字替换对 8B 本地模型友好，是 Qwen3:8B 环境下的主力路线。
+**模型压力**：低。选页与文字替换对 9B 级本地模型友好，是 Qwen3.5:9B 环境下的主力路线。
 
 ### 5.2 路径 B：提炼成可复用模板 —— Create Template（模板资产化，重点推荐）
 
@@ -300,7 +300,7 @@ AI 读取全部原型与当前内容，自动决定选页 / 复用 / 重排，�
 | 多品牌共用一套骨架 | **C** Layout + Brand 组合 | 中 |
 | 想整页重新设计（改版） | Generate PPTX 的 Beautify 路线（不要硬套 A） | 高 |
 
-> **关键洞察**：模板提炼（路径 B）是一次性的高模型压力任务，可以借一次云端大模型完成；而模板**消费**（每天生成新 PPT、回填内容）是高频低压力任务，完全可以由本地 Qwen3:8B 承担。这个"一次贵、长期便宜"的结构，正好匹配"本地化部署 + 模板复用"的企业诉求。
+> **关键洞察**：模板提炼（路径 B）是一次性的高模型压力任务，可以借一次云端大模型完成；而模板**消费**（每天生成新 PPT、回填内容）是高频低压力任务，完全可以由本地 Qwen3.5:9B 承担。这个"一次贵、长期便宜"的结构，正好匹配"本地化部署 + 模板复用"的企业诉求。
 
 ---
 
@@ -308,9 +308,9 @@ AI 读取全部原型与当前内容，自动决定选页 / 复用 / 重排，�
 
 | 阶段 | 目标 | 动作 | 周期参考 |
 |---|---|---|---|
-| 一、环境验证 | 跑通最小闭环 | 按 3.4 节搭 Ollama + Claude Code + Qwen3:8B；用内置模板（如 `presentation_core`）生成 5 页测试 deck；跑一遍路径 A 回填测试 | 1–2 天 |
+| 一、环境验证 | 跑通最小闭环 | 按 3.4 节搭 Ollama + Claude Code + Qwen3.5:9B；用内置模板（如 `presentation_core`）生成 5 页测试 deck；跑一遍路径 A 回填测试 | 1–2 天 |
 | 二、模板试点 | 沉淀第一个企业模板 | 选一套使用频率最高的公司 deck，走路径 B 提炼为 Deck 工作区（此步骤建议接入云端大模型完成）；在真 PowerPoint 中按 5.2 验收表检查 | 1 周内 |
-| 三、并行对比 | 验证产出质量 | 同一批内容分别用"本地 8B"和"云端大模型"从模板生成，对比打磨工作量，确定日常路线与分层路由策略 | 2 周 |
+| 三、并行对比 | 验证产出质量 | 同一批内容分别用"本地 9B"和"云端大模型"从模板生成，对比打磨工作量，确定日常路线与分层路由策略 | 2 周 |
 | 四、团队推广 | 资产 git 化 + 协作规范 | 模板工作区与本文档一并纳入 git 仓库（仓库地址见《GitHub 协作规则》），按协作规则提交推送；团队成员按第 4 章上手 | 持续 |
 | 五、规模化 | 多模板 / 多场景 | 按需扩展 Brand / Layout / Deck 模板族，启用路径 C 组合；评估升级模型档位 | 按需 |
 

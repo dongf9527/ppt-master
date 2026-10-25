@@ -61,7 +61,7 @@
 | `fix` | 修复问题 | `fix(template): 修正 design_spec 主色 HEX 值` |
 | `docs` | 文档变更 | `docs: 补充 Ollama 接入配置说明` |
 | `refactor` | 重构（不改行为） | `refactor(layout): 抽取公共槽位约定` |
-| `test` | 测试记录/用例 | `test: 记录 qwen3:8b 回填路径验证结果` |
+| `test` | 测试记录/用例 | `test: 记录 qwen3.5:9b 回填路径验证结果` |
 | `chore` | 杂项维护 | `chore: 更新 .gitignore 排除 exports/` |
 
 **细则**：一次提交只做一件事；模板工作区整体入库时可在同一 commit 内包含其全部文件（spec + SVG + 素材）。
