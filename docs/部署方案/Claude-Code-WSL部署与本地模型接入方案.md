@@ -1,9 +1,9 @@
 # Claude Code WSL 部署与本地模型接入方案
 
-> 文档版本：v1.2 ｜ 整理日期：2026-10-26
+> 文档版本：v1.3 ｜ 整理日期：2026-10-26
 > 目标环境：Windows 10/11 + WSL2（Ubuntu 22.04 / 24.04）
 > 接入对象：WSL 内**现有**的 Ollama（及 vLLM），模型 **Qwen3.5:9B**（工作站已预装）
-> 变更记录：v1.2 6.2 节验证步骤按实机取证重写（environ 取证、加载快照坑、api/show 前缀键与原生上限辨析），8.1 回填 qwen3.5:9b@64k+q8_0 实测显存（KV 仅 ~1 GiB，混合注意力架构）；v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
+> 变更记录：v1.3 第 10 章新增“Claude Code 多份安装（Windows interop 抢占 PATH）”排查行；v1.2 6.2 节验证步骤按实机取证重写（environ 取证、加载快照坑、api/show 前缀键与原生上限辨析），8.1 回填 qwen3.5:9b@64k+q8_0 实测显存（KV 仅 ~1 GiB，混合注意力架构）；v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
 > 配套文档：`../评估方案/PPT-Master评估与企业模板复用方案.md`、`../GitHub协作规则.md`
 > 说明：本文所有命令除特别注明"Windows 侧"外，均在 WSL 终端内执行。
 
@@ -551,6 +551,7 @@ claude    # 在 ppt-master 目录启动（配置已指向本地模型）
 | **响应越来越慢（10s→80s 递增）** | 已知 bug（Ollama #13949）：Claude Code 周期性调用 `/v1/messages/count_tokens`，旧版 Ollama 不支持且反复重试拖垮请求处理 | 重启 `ollama serve` 可临时恢复；升级 Ollama 至修复版本 |
 | 模型"忘事"、答非所问 | 上下文仍为默认 4096 | 按 6.2 设 `OLLAMA_CONTEXT_LENGTH`，Modelfile 方式二选一 |
 | **四参数全部未生效**（ps 仍 4096、UNTIL 仍 5 分钟） | 环境变量没进 systemd 服务进程（bashrc/终端 export 对服务无效，或 override 漏了 daemon-reload/restart） | 取证：`sudo cat /proc/$(pidof ollama)/environ \| tr '\0' '\n' \| grep OLLAMA`；再按 6.2 方式一写 override.conf 并 `daemon-reload + restart`；旧实例是加载时快照，须重载后再验 |
+| `claude` 执行的版本不对 / doctor 报 Multiple installations（Invoked 指向 /mnt/c/...） | Windows 侧 npm 装过 Claude Code，其 shim 经 WSL interop 抢占 PATH | 统一保留 native：`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`，再 `claude install` 对齐 install method；Windows PowerShell 删 `%APPDATA%\npm\node_modules\@anthropic-ai\claude-code` 及 `claude`、`claude.cmd`、`claude.ps1` 三个 shim（npm 不可用时直接删文件等价） |
 | 推理极慢、CPU 拉满 | GPU 未生效 | `ollama ps` 看 Processor 列；检查 `nvidia-smi`；更新 Windows 显卡驱动后 `wsl --shutdown` |
 | vLLM 工具调用失效（模型把工具调用当文字输出） | 缺 `--enable-auto-tool-choice --tool-call-parser hermes` | 补参数重启 vLLM |
 | CCR 报 upstream 超时 | vLLM 长思考超时 | `config.json` 中调大 `API_TIMEOUT_MS`（如 600000） |
