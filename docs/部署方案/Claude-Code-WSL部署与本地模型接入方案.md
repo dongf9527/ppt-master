@@ -1,9 +1,9 @@
 # Claude Code WSL 部署与本地模型接入方案
 
-> 文档版本：v1.4 ｜ 整理日期：2026-10-26
+> 文档版本：v1.5 ｜ 整理日期：2026-10-26
 > 目标环境：Windows 10/11 + WSL2（Ubuntu 22.04 / 24.04）
 > 接入对象：WSL 内**现有**的 Ollama（及 vLLM），模型 **Qwen3.5:9B**（工作站已预装）
-> 变更记录：v1.4 6.4 方式二补全三档模型映射与 CLAUDE_CODE_MAX_CONTEXT_TOKENS（校准 CC 对自定义模型的 200k 假设），8.2 增第四坑，10 章增对应排查行，修正 6.5 hello.txt 预期字节数；v1.3 第 10 章新增“Claude Code 多份安装（Windows interop 抢占 PATH）”排查行；v1.2 6.2 节验证步骤按实机取证重写（environ 取证、加载快照坑、api/show 前缀键与原生上限辨析），8.1 回填 qwen3.5:9b@64k+q8_0 实测显存（KV 仅 ~1 GiB，混合注意力架构）；v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
+> 变更记录：v1.5 6.5 第④层回填实机复验结果（/context 23.2k/65.5k，窗口校准生效，四层验收闭环），8.2 第四坑补实机闭环与 autocompact buffer 余量说明，10 章对应排查行补复验标准；v1.4 6.4 方式二补全三档模型映射与 CLAUDE_CODE_MAX_CONTEXT_TOKENS（校准 CC 对自定义模型的 200k 假设），8.2 增第四坑，10 章增对应排查行，修正 6.5 hello.txt 预期字节数；v1.3 第 10 章新增“Claude Code 多份安装（Windows interop 抢占 PATH）”排查行；v1.2 6.2 节验证步骤按实机取证重写（environ 取证、加载快照坑、api/show 前缀键与原生上限辨析），8.1 回填 qwen3.5:9b@64k+q8_0 实测显存（KV 仅 ~1 GiB，混合注意力架构）；v1.1 驱动模型定版为 qwen3.5:9b（本机已预装，不设回退策略）；6.2 节补充四个 Ollama 参数的详细释义、三种配置方式与验证方法
 > 配套文档：`../评估方案/PPT-Master评估与企业模板复用方案.md`、`../GitHub协作规则.md`
 > 说明：本文所有命令除特别注明"Windows 侧"外，均在 WSL 终端内执行。
 
@@ -372,10 +372,17 @@ claude "请回复：连接成功"
 claude "在 /tmp 下创建 hello.txt，内容为 ppt-master-ok，然后告诉我文件大小"
 ls -l /tmp/hello.txt   # 存在且 14 字节（ppt-master-ok 13 字符 + 换行）即工具链正常
 
-# ④ 上下文层：会话内执行 /context，确认上下文窗口 ≥ 32k
+# ④ 上下文层：会话内执行 /context，确认窗口数值与 65536 一致
+# 期望（2026-10-26 实机复验）：
+#   Context Usage: 23.2k/65.5k tokens (35%)   ← 分母 65.5k = MAX_CONTEXT_TOKENS 校准生效
+#   Auto-compact window: 65.5k tokens          ← 若仍是 200k 则 settings.json 未生效
+#   Autocompact buffer: 33k tokens (50.4%)     ← CC 预留约半窗作压缩缓冲，属正常
+# 注：文案仍带 "unrecognized model" 字样属预期（CC 不识别自定义名，窗口已由变量钉死，
+#     以数值为准）；真实对话余量 ≈ 窗口 − 占用 − buffer，65.5k 窗口下占用到 ~32k
+#     就会触发自动压缩，长会话规划见 8.2 第四坑。
 ```
 
-四层全部通过，路线 A 部署完成。
+四层全部通过，路线 A 部署完成（本工作站 2026-10-26 四层全绿，下一步进入 9.2 ppt-master 冒烟）。
 ## 7. 阶段四：路线 B —— vLLM + claude-code-router 桥接（团队共享 GPU）
 
 ### 7.1 启动 vLLM 服务（参数不可省）
@@ -504,6 +511,8 @@ Qwen3.5:9B 量化权重（q4_K_M）约 5.8 GiB；KV cache 每 token 约 144 KiB�
 3. **上下文吃满的行为**：接近上限时 Claude Code 会自动压缩（compact）历史，压缩本身也消耗一次推理；模型越小压缩损失越大，重要任务前先 `/clear` 开新会话。
 4. **Claude Code 对自定义模型名按 200k 假设**：启动告警 `Model "qwen3.5:9b" isn't recognized · context assumed to be 200k tokens`，`/context` 显示的 200k 是假象——真实仅 64k，按假象用下去必然超限截断（又回到“忘事”症状）。解法：settings.json 的 env 加 `"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "65536"`（6.4 方式二已含），重启后 `/context` 的 Auto-compact window 应显示 65536。
 
+   **实机闭环（2026-10-26）**：settings.json 补齐后复验，`/context` 显示 `23.2k/65.5k tokens (35%)`、`Auto-compact window: 65.5k tokens`——校准生效。两点后续注意：① 显示文案仍标注 `default for an unrecognized model`，属预期外观，以数值 65.5k 为准；② CC 会预留约一半窗口（33k）作为 autocompact buffer，65.5k 窗口的真实对话余量约 32k，长会话会比窗口数暗示的更早触发自动压缩——重要任务前 `/clear` 开新会话、关键约定写入项目 CLAUDE.md（压缩后仍存活）是两条有效对策。
+
 ### 8.3 思考模式与响应速度
 
 Qwen3.5 沿用 Qwen3 系列的思考（thinking）/非思考双模式设计，Ollama 默认开启思考。思考模式提升推理质量但显著拉长首 token 延迟，PPT Master 的模板消费（Edit Native PPTX 路线）建议保持默认；若追求响应速度或模型出现"卡在思考态"（小模型偶发），可在对话中让模型关闭思考（提示词加 `/no_think`），或在 CCR 层统一处理。
@@ -557,7 +566,7 @@ claude    # 在 ppt-master 目录启动（配置已指向本地模型）
 | 模型"忘事"、答非所问 | 上下文仍为默认 4096 | 按 6.2 设 `OLLAMA_CONTEXT_LENGTH`，Modelfile 方式二选一 |
 | **四参数全部未生效**（ps 仍 4096、UNTIL 仍 5 分钟） | 环境变量没进 systemd 服务进程（bashrc/终端 export 对服务无效，或 override 漏了 daemon-reload/restart） | 取证：`sudo cat /proc/$(pidof ollama)/environ \| tr '\0' '\n' \| grep OLLAMA`；再按 6.2 方式一写 override.conf 并 `daemon-reload + restart`；旧实例是加载时快照，须重载后再验 |
 | `claude` 执行的版本不对 / doctor 报 Multiple installations（Invoked 指向 /mnt/c/...） | Windows 侧 npm 装过 Claude Code，其 shim 经 WSL interop 抢占 PATH | 统一保留 native：`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc`，再 `claude install` 对齐 install method；Windows PowerShell 删 `%APPDATA%\npm\node_modules\@anthropic-ai\claude-code` 及 `claude`、`claude.cmd`、`claude.ps1` 三个 shim（npm 不可用时直接删文件等价） |
-| 启动告警 `Model ... isn't recognized · context assumed to be 200k`，/context 显示 200k | Claude Code 不识别自定义模型名，默认按 200k 管理上下文，而真实窗口仅 64k，超限即被 Ollama 静默截断 | `~/.claude/settings.json` env 加 `"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "65536"` 后重启会话；顺带把 `ANTHROPIC_DEFAULT_OPUS/SONNET/HAIKU_MODEL` 三档映射到本地模型，防后台任务落到云端 |
+| 启动告警 `Model ... isn't recognized · context assumed to be 200k`，/context 显示 200k | Claude Code 不识别自定义模型名，默认按 200k 管理上下文，而真实窗口仅 64k，超限即被 Ollama 静默截断 | `~/.claude/settings.json` env 加 `"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "65536"` 后重启会话；顺带把 `ANTHROPIC_DEFAULT_OPUS/SONNET/HAIKU_MODEL` 三档映射到本地模型，防后台任务落到云端；复验标准：/context 分母显示 65.5k、Auto-compact window 65.5k（2026-10-26 已实机闭环） |
 | 推理极慢、CPU 拉满 | GPU 未生效 | `ollama ps` 看 Processor 列；检查 `nvidia-smi`；更新 Windows 显卡驱动后 `wsl --shutdown` |
 | vLLM 工具调用失效（模型把工具调用当文字输出） | 缺 `--enable-auto-tool-choice --tool-call-parser hermes` | 补参数重启 vLLM |
 | CCR 报 upstream 超时 | vLLM 长思考超时 | `config.json` 中调大 `API_TIMEOUT_MS`（如 600000） |
