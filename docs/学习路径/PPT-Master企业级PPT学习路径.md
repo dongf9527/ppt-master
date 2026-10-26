@@ -1,6 +1,6 @@
 # PPT Master 企业级 PPT 学习路径
 
-> 文档版本：v1.2 ｜ 整理日期：2026-10-26 ｜ 变更：v1.2 阶段 2 回填 20261026 首战复盘（输入先验/一页一会话/确认关卡/三条铁律/备注正确机制，指向测试记录）；v1.1 阶段 1 接入《冒烟测试示例选型》；v1.0 初版
+> 文档版本：v1.3 ｜ 整理日期：2026-10-26 ｜ 变更：v1.3 阶段 1 提示词重写为语义任务版（整段替换+范围圈定+读一次+正反自验，五条实测教训落地）并补验收正反两问，指向测试记录 §10.8；v1.2 阶段 2 回填 20261026 首战复盘（输入先验/一页一会话/确认关卡/三条铁律/备注正确机制）；v1.1 阶段 1 接入《冒烟测试示例选型》；v1.0 初版
 > 适用读者：已完成《部署方案》路线 A 部署并通过四层验收的企业工作站用户（Claude Code + Ollama + qwen3.5:9b）
 > 目标：用最短时间从"环境就绪"走到"稳定产出企业级 PPT"
 > 配套文档：`../部署方案/Claude-Code-WSL部署与本地模型接入方案.md`（环境）、`../评估方案/PPT-Master评估与企业模板复用方案.md`（选型依据）
@@ -88,16 +88,35 @@
 
 **读**：`docs/zh/getting-started.md` 全文（重点：配置安装目录与工作目录、做出第一份 deck、快速模式三节，约 15 分钟）；`technical-design.md` 的"路线判定速查表"一节（约 5 分钟）。建立三个核心概念：`projects/<name>` 是每个任务的工作区、最终交付在 `projects/<name>/exports/`、三条路线按"要不要保留原设计"来分。
 
-**做**：准备任意一份源 PPTX——**不必海选**，直接用《冒烟测试示例选型》主推三例之一（首选 `ppt169_dujiangyan_zh_sparse`，14 页/0.73 MB，最稳），获取方式见该文档第 6 节。复制进 `projects/` 后在 claude 会话输入：
+**做**：源件两选一——企业真实源件 `projects/demo.pptx`（20261026 实测所用，3 页，封面恰为独立日期＋主标题两个文本元素，下方提示词的日期条款即针对它）；或《冒烟测试示例选型》主推三例之一（此时把日期条款换成"封面日期等其他元素逐字节不动"）。源件就位后在 claude 会话输入（v1.3 语义任务版提示词，`<YYYYMMDD>` 换当日日期）：
 
 ```text
-用 ppt-master 的 Edit Native PPTX 流程处理 projects/demo.pptx：
-只把第 1 页（标题页）的主标题文字替换为"部署验收测试"，
-其余所有页面逐字节保留，导出为新文件，不要覆盖源文件。
-完成后告诉我工作区路径和导出文件路径。
+用 ppt-master 的 Edit Native PPTX 流程对 projects/demo.pptx 做最小闭环试验。
+0) 预检：projects/demo.pptx 不存在则立即停下问我；若 projects/ 下已有 demo_roundtrip_* 旧工作区，
+   先执行 mkdir -p projects/_archived && mv projects/demo_roundtrip_* projects/_archived/（只归档不删除）。
+1) 导入（照抄执行）：
+   python3 skills/ppt-master/scripts/pptx_to_svg.py projects/demo.pptx -o projects/demo_roundtrip_<YYYYMMDD> --inheritance-mode both --roundtrip
+2) 编辑任务（语义任务，不是字符串查找替换）：把第 1 页（标题页）主标题的整段文字替换为：部署验收测试
+   终态：主标题 <text> 元素内文字恰为「部署验收测试」六个字，整段更换；
+   页面上不再出现「信息科技制度体系」，也不残留「建设」「项目」等旧标题片段；
+   除主标题所在 <text> 外一切元素逐字节不动，尤其日期「2021年10月」的 <text> 及其 4 个 tspan；
+   不得新增 <text>/<tspan>，不得改变任何元素的属性与位置。
+   约束：每个文件最多读取一次，后续凭已有信息执行；
+   只读取并只修改 authoring-svg-flat/slide_01.svg，slide_02/03 一律不打开；
+   禁止修改 skills/ 下任何脚本。
+3) 质检（0 error 才许导出）：
+   python3 skills/ppt-master/scripts/svg_quality_checker.py projects/demo_roundtrip_<YYYYMMDD> --roundtrip --json
+4) 导出：
+   python3 skills/ppt-master/scripts/svg_to_pptx.py projects/demo_roundtrip_<YYYYMMDD> --roundtrip
+5) 自验后只回答四问（必须基于解包导出件 ppt/slides/slide1.xml 的真实输出，不得凭记忆作答）：
+   ① exports/ 下导出文件名；② 主标题完整文字（期望「部署验收测试」）；
+   ③ 「信息科技制度体系」「建设项目」命中数（期望 0、0）；④ 日期是否原样独立存在（期望是）。
+   任何一步与上述不符（文件缺失、质检报错、定位不到主标题），立即停下问我，禁止即兴发挥。
 ```
 
-**验收标准**：① 导出 PPTX 能在 PowerPoint 正常打开；② 标题已改且文字可点选编辑（原生文本框而非图片）；③ 其余页母版、配色、动画原样未动；④ 工作区出现 `authoring-svg-flat/`（可编辑 SVG）、`exports/`（成品）、`sources/source.pptx`（原包只读留存）。
+**为什么提示词长成这样（v1.3，五条实测教训，逐条见测试记录 §10）**：① **整段替换必须写明终态＋残留禁令**——9B 会把语义替换做成子串替换（换了"信息科技制度体系"留下"建设项目"，v1.2 版四行短提示词三轮翻车同根，见 §10.8）；② **每个文件最多读取一次**——实测防 autocompact 抖动最有效条款（带此条款 1m32s 闭环，不带 3m40s 烧穿）；③ **圈定操作范围到被编辑元素**（"其余一切元素逐字节不动"）——否则"合并/删除片段"类操作会外溢到无辜元素（日期被融进标题）；④ **机械步骤命令内联照抄**——读写预算全部留给那一次 slide_01.svg 阅读，不需再读 workflow 文档与脚本源码；⑤ **自验正反两问且必须基于解包真实输出**——正面答案不能证明清除，凭记忆作答等于没验。
+
+**验收标准**：① 导出 PPTX 能在 PowerPoint 正常打开；② 标题已改且文字可点选编辑（原生文本框而非图片）；③ 其余页母版、配色、动画原样未动；④ 工作区出现 `authoring-svg-flat/`（可编辑 SVG）、`exports/`（成品）、`sources/source.pptx`（原包只读留存）；⑤ **主标题完整文字恰为「部署验收测试」**——不是"部署验收测试建设项目"，正反两问全过（旧标题及"建设/项目"残留命中 0）；⑥ 日期「2021年10月」原样独立存在（roundtrip 连源件 4-run 结构都应原样保留）。可与协作沙箱对照件开包比对验收。
 
 **这一步建立的关键认知**：Edit Native PPTX 用 `pptx_to_svg.py --roundtrip` 把源 deck 变成"可编辑 SVG + 不可变原生底座"工作区——没动的页逐字节还原，改动的页只重建改过的对象。这就是"企业级不跑版"的机制保证。
 
