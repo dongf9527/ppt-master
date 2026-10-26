@@ -1,9 +1,9 @@
 # Codex CLI + Ollama + Qwen3-VL WSL 部署手册（本地视觉 Agent 栈）
 
-> 文档版本：v1.1 ｜ 整理日期：2026-10-26
+> 文档版本：v1.2 ｜ 整理日期：2026-10-26
 > 目标环境：Windows 10/11 + WSL2（Ubuntu 22.04 / 24.04），参考实机 CNBEJFSOP03（RTX 5080 16GB）
 > 定版模型：**qwen3-vl:8b**（Q4_K_M，磁盘 6.2GB，满足「10G 以下 · Q4」选型约束）
-> 变更记录：v1.0 首发定版（依据 Ollama 官方 Codex CLI 集成文档、qwen3-vl 模型库页 2026-10 当期数据、Task 27 本地栈可行性评估结论、工作站 image-to-pptx 首战审计 8 违规教训）；v1.1 补全两大缺口——5.4 扩写为「WSL 内从零安装 Codex CLI 完整步骤」（Node 前置 / npm·官方脚本·二进制三路线 / 安装后验证 / 首次运行预期），5.5 扩写为「连通原理 + 连通前自检 + 四种接入方式」（新增官方 `codex --oss` 手动方式，原方式二/三顺延为三/四，全文交叉引用同步更新）
+> 变更记录：v1.0 首发定版（依据 Ollama 官方 Codex CLI 集成文档、qwen3-vl 模型库页 2026-10 当期数据、Task 27 本地栈可行性评估结论、工作站 image-to-pptx 首战审计 8 违规教训）；v1.1 补全两大缺口——5.4 扩写为「WSL 内从零安装 Codex CLI 完整步骤」（Node 前置 / npm·官方脚本·二进制三路线 / 安装后验证 / 首次运行预期），5.5 扩写为「连通原理 + 连通前自检 + 四种接入方式」（新增官方 `codex --oss` 手动方式，原方式二/三顺延为三/四，全文交叉引用同步更新）；v1.2 首跑实测回填两条——5.5 连通自检「空输出」排查注（localhost 拼写误 + `-s` 静默陷阱，CNBEJFSOP03 首跑实例）与 5.3 图像路径实机替换注（示例路径为沙箱环境）
 > 配套文档：`Claude-Code-WSL部署与本地模型接入方案.md`（下称《CC 方案》，v1.6）、`../评估方案/PPT-Master评估与企业模板复用方案.md`、上游 `skills/ppt-master/workflows/profiles/image-to-pptx.md`（130 行）、`../GitHub协作规则.md`
 > 说明：本文所有命令除特别注明 "Windows 侧" 外，均在 WSL 终端内执行。本文与《CC 方案》为兄弟文档：Claude Code 栈管文本类工作流，本栈（Codex）管视觉重建类工作流。
 
@@ -201,6 +201,8 @@ ollama run qwen3-vl:8b "用一句话说明什么是PPT的对象化重建"
 ollama run qwen3-vl:8b "这张图片里最大的标题文字是什么？ /home/z/my-project/upload/001-AI方法论.png"
 ```
 
+注：示例中的图像路径是**沙箱对照环境**路径；工作站执行时替换为本机实际路径——先把 001 源件拷到 WSL 侧（如 `~/sourcecode/ppt-master/assets/001-AI方法论.png`，放 ext4 而非 /mnt/c，读取更快也更稳），5.6 图像回合与附录 B 脚本中的路径同理。
+
 判定标准：回合二必须答出图中**真实存在**的内容（如 "AI 落地方法论" 类标题原文），而不是泛泛的"这是一张关于AI的图片"。答出具体文字 = 视觉通道通；声称看不到 / 答非所问 = 先解决模型层，不进入下一步。curl 版本（可脚本化、进 CI）见附录 B。
 
 ### 5.4 在 WSL 中安装 Codex CLI（从零到可用）
@@ -267,6 +269,8 @@ curl -s http://localhost:11434/v1/models | grep qwen3-vl   # 期望模型 ID 在
 ```
 
 两条都过 = 连通的物理前提成立，之后的任何连通失败都是 codex 配置层问题（对照第 9 章）；第一条就不通 = Ollama 服务本身没起或端口不对，回 3.2。进入 codex 后的会话内确认：`/status` 看 provider 与 model，`/model` 看可切换列表。
+
+⚠️ **实测教训（CNBEJFSOP03 首跑，2026-10）**：自检命令若**输出为空**，先查拼写——首跑把 `localhost` 敲成 `localhsot`，`-s` 把「域名解析失败」静默成空输出，看起来像「服务没响应」。复验改用 `curl -v http://localhost:11434/`（或临时去掉 `-s`），看到真实连接过程再下结论；排除拼写后才轮到查服务状态（`systemctl is-active ollama`）。
 
 **方式一（推荐起步）：`ollama launch codex` 一键**
 
