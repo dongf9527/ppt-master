@@ -1,9 +1,9 @@
 # Codex CLI + Ollama + Qwen3-VL WSL 部署手册（本地视觉 Agent 栈）
 
-> 文档版本：v1.0 ｜ 整理日期：2026-10-26
+> 文档版本：v1.1 ｜ 整理日期：2026-10-26
 > 目标环境：Windows 10/11 + WSL2（Ubuntu 22.04 / 24.04），参考实机 CNBEJFSOP03（RTX 5080 16GB）
 > 定版模型：**qwen3-vl:8b**（Q4_K_M，磁盘 6.2GB，满足「10G 以下 · Q4」选型约束）
-> 变更记录：v1.0 首发定版（依据 Ollama 官方 Codex CLI 集成文档、qwen3-vl 模型库页 2026-10 当期数据、Task 27 本地栈可行性评估结论、工作站 image-to-pptx 首战审计 8 违规教训）
+> 变更记录：v1.0 首发定版（依据 Ollama 官方 Codex CLI 集成文档、qwen3-vl 模型库页 2026-10 当期数据、Task 27 本地栈可行性评估结论、工作站 image-to-pptx 首战审计 8 违规教训）；v1.1 补全两大缺口——5.4 扩写为「WSL 内从零安装 Codex CLI 完整步骤」（Node 前置 / npm·官方脚本·二进制三路线 / 安装后验证 / 首次运行预期），5.5 扩写为「连通原理 + 连通前自检 + 四种接入方式」（新增官方 `codex --oss` 手动方式，原方式二/三顺延为三/四，全文交叉引用同步更新）
 > 配套文档：`Claude-Code-WSL部署与本地模型接入方案.md`（下称《CC 方案》，v1.6）、`../评估方案/PPT-Master评估与企业模板复用方案.md`、上游 `skills/ppt-master/workflows/profiles/image-to-pptx.md`（130 行）、`../GitHub协作规则.md`
 > 说明：本文所有命令除特别注明 "Windows 侧" 外，均在 WSL 终端内执行。本文与《CC 方案》为兄弟文档：Claude Code 栈管文本类工作流，本栈（Codex）管视觉重建类工作流。
 
@@ -92,7 +92,7 @@ ollama list                         # 确认 qwen3.5:9b 在位（与本栈并存
 curl -s http://localhost:11434/     # 应返回 "Ollama is running"
 ```
 
-低于 0.12.7：qwen3-vl 拉取后无法正常推理，必须升级；`ollama launch` 子命令不存在：说明版本偏旧，第 5.5 节只能用方式二 / 方式三。升级命令（模型与已有配置不受影响）：
+低于 0.12.7：qwen3-vl 拉取后无法正常推理，必须升级；`ollama launch` 子命令不存在：说明版本偏旧，第 5.5 节改用方式二（`codex --oss`，仅依赖 codex 侧）/ 方式三 / 方式四。升级命令（模型与已有配置不受影响）：
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
@@ -101,9 +101,11 @@ curl -fsSL https://ollama.com/install.sh | sh
 ### 3.3 Node.js 与 Codex CLI 前置
 
 ```bash
-node -v    # ≥ 22（建议 22 LTS；用 nvm 管理，避免 Windows interop 抢占 PATH——见《CC 方案》第 10 章教训）
-which codex   # 部署后验证：应指向 WSL 内的安装（通常是 nvm 或 /usr/local 路径），而非 /mnt/c/...
+node -v      # ≥ 22 已就绪则跳过；未装 / 版本低于 22 时的安装动作见 5.4 第 1 步
+which codex  # 部署前应为空（未装）；部署后验证：应指向 WSL 内的安装，而非 /mnt/c/...
 ```
+
+Codex CLI 官方不支持 Windows 原生运行，**WSL 就是官方 Linux 安装路径**——这也是本手册全部步骤都在 WSL 终端内执行的原因。安装动作统一收在第 5.4 节。
 
 ### 3.4 磁盘与内存
 
@@ -161,8 +163,8 @@ Codex 新版默认走 `wire_api = "responses"`（`/v1/responses` 端点）。Oll
 
 判定与降级路径（三层，逐层收窄）：
 
-1. 图像冒烟通过 → 用方式一 / 方式二（responses 通道），享受官方集成；
-2. 冒烟失败（模型说看不到图）→ 切方式三 `wire_api = "chat"`——chat completions 的图像通道（image_url / images 字段）是老功能，成熟稳定；
+1. 图像冒烟通过 → 用方式一 / 方式二 / 方式三（responses 通道），享受官方集成；
+2. 冒烟失败（模型说看不到图）→ 切方式四 `wire_api = "chat"`——chat completions 的图像通道（image_url / images 字段）是老功能，成熟稳定；
 3. chat 通道仍失败 → 用 5.3 的 `ollama run` CLI 直验 + 附录 B 的 curl 直验：CLI 通而 codex 不通 = 问题锁定在 codex 配置层；CLI 也不通 = 模型层 / 版本层问题，回头查 3.2。
 
 ---
@@ -201,17 +203,70 @@ ollama run qwen3-vl:8b "这张图片里最大的标题文字是什么？ /home/z
 
 判定标准：回合二必须答出图中**真实存在**的内容（如 "AI 落地方法论" 类标题原文），而不是泛泛的"这是一张关于AI的图片"。答出具体文字 = 视觉通道通；声称看不到 / 答非所问 = 先解决模型层，不进入下一步。curl 版本（可脚本化、进 CI）见附录 B。
 
-### 5.4 安装 Codex CLI
+### 5.4 在 WSL 中安装 Codex CLI（从零到可用）
+
+**第 1 步：Node.js 就位（npm 路线的前置，已装可跳过）**
+
+Codex CLI 官方分发以 npm 包为主，Node.js 需 ≥ 22（建议 22 LTS）。用 nvm 装在 **WSL 内**——不要装到 Windows 侧，否则 interop 会抢占 PATH（《CC 方案》第 10 章同款教训）：
 
 ```bash
-npm install -g @openai/codex
-codex --version
-which codex    # 确认在 WSL 侧，不在 /mnt/c（PATH 抢占教训同《CC 方案》第 10 章）
+node -v   # 已 ≥ 22 则跳过本步
+# 未装：先装 nvm（脚本 URL 与版本号以 github.com/nvm-sh/nvm 仓库 README 当前为准）
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+exec $SHELL                    # 或重开终端，让 nvm 进 PATH
+nvm install 22 && nvm use 22
+node -v && npm -v
 ```
 
-说明：使用 Ollama provider 时**不需要 OpenAI 账号登录**，认证由 provider 配置承担（方式三需要占位 env_key，见 5.5）。
+**第 2 步：安装 Codex CLI（三选一）**
 
-### 5.5 三种接入方式（按优先级递减）
+| 路线 | 命令 / 动作 | 适用场景 |
+|---|---|---|
+| A. npm（默认推荐） | `npm install -g @openai/codex` | 已有 Node 栈，与《CC 方案》环境统一管理 |
+| B. 官方独立安装脚本 | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | 不想依赖 Node；重跑同一命令即完成升级 |
+| C. GitHub Release 二进制 | 从 github.com/openai/codex/releases 下载 `codex-x86_64-unknown-linux-musl.tar.gz`，解压后把包内 `codex-x86_64-unknown-linux-musl` 重命名为 `codex`，放入 PATH 内目录（如 `~/.local/bin`）并 `chmod +x` | 内网 / 离线：先在能联网的机器下载再拷入 |
+
+三条路线装的是同一个 codex，**选一条即可**；混装多份会重演《CC 方案》的多份安装排查（生效者 = PATH 顺序最前者）。本手册后续以路线 A 为准书写，B/C 路线仅安装动作不同。
+
+**第 3 步：安装后验证**
+
+```bash
+codex --version   # 2026-10 当期 0.164.0；B/C 路线重跑安装动作即可升级
+which codex       # 必须在 WSL 侧（nvm bin / ~/.local/bin / /usr/local/...），绝不能是 /mnt/c/...
+codex --help      # 核对本手册用到的参数在位：--oss、--profile、-i/--image、-m
+```
+
+**第 4 步：首次运行的预期行为（不要被登录界面带跑）**
+
+- 首次在任何目录运行 `codex` 会先弹「是否信任此目录」，选 Yes/Trust；
+- 未配置 provider 前，界面会引导 **Sign in with ChatGPT**——本栈**不走这条路，不需要 OpenAI 账号**；
+- 只要 5.5 的 provider 配置在位，正常启动后 `/status` 应显示 provider = Ollama、model = qwen3-vl:8b，全程无登录动作；认证由 provider 配置承担（其中方式四需要占位 `env_key`，见 5.5）；
+- 启动仍强求登录 = provider 配置未生效：配置文件名 / `--profile` 参数 / `env_key` 三处逐一核对（第 9 章）。
+
+### 5.5 Codex ↔ Ollama 连通：原理与四种接入方式
+
+**连通原理（四种方式共用的同一条链）**
+
+Codex 只是 Agent 宿主（客户端），模型后端完全由配置决定。所谓「连通」，就是让 codex 发出的 HTTP 请求落到 WSL 内 Ollama 监听的端口上：
+
+```text
+codex ──读配置──► model_provider ──► [model_providers.X].base_url
+      ──HTTP──► http://localhost:11434/v1/   （Ollama OpenAI 兼容端点）
+                wire_api = "responses" → 走 /v1/responses
+                wire_api = "chat"      → 走 /v1/chat/completions
+Ollama ──按请求中的 model 字段匹配 ollama list 名字──► qwen3-vl:8b 推理
+```
+
+三句话要点：①`base_url` 必须精确到 `/v1`（官方模板有带尾斜杠与不带两种写法，跟随模板即可），少写 `/v1` 必 404；②`wire_api` 决定走哪条端点路径——responses 是新协议、chat 是老协议，同一端口两条路径，与 base_url 是两层独立配置；③Ollama 本地默认不校验 API key，方式四的 `env_key` 只是满足 codex「provider 必须有认证变量」的存在性检查，值任意。
+
+**连通前自检（不写任何 codex 配置，先证物理链路通）**
+
+```bash
+curl -s http://localhost:11434/                            # 期望 "Ollama is running"
+curl -s http://localhost:11434/v1/models | grep qwen3-vl   # 期望模型 ID 在列
+```
+
+两条都过 = 连通的物理前提成立，之后的任何连通失败都是 codex 配置层问题（对照第 9 章）；第一条就不通 = Ollama 服务本身没起或端口不对，回 3.2。进入 codex 后的会话内确认：`/status` 看 provider 与 model，`/model` 看可切换列表。
 
 **方式一（推荐起步）：`ollama launch codex` 一键**
 
@@ -225,7 +280,18 @@ ollama launch codex
 - 配置化：`ollama launch codex --config`；完全还原移除：`ollama launch codex --restore`；
 - 前提：`ollama launch` 子命令存在（3.2 版本门）；首次运行需联网刷新目录（代理环境注意 3.5）。
 
-**方式二（持久化，可入库）：profile 配置文件**
+**方式二（官方手动方式，最简零配置）：`codex --oss`**
+
+```bash
+codex --oss -m qwen3-vl:8b
+```
+
+- `--oss` 是 Codex 官方内置的「本地开源模型」入口：默认连 `localhost:11434` 的 Ollama，**不写任何配置文件**；
+- `-m` 必须显式指定：不带 `-m` 时默认指向 gpt-oss 系模型而非 qwen3-vl；模型名与 `ollama list` 逐字符对齐；
+- 依赖较新的 codex 版本（`codex --help` 中应有 `--oss`；当期 0.16x 具备），旧版 codex 改用方式三 / 方式四；
+- 适合：不想落配置文件的快速验证、或临时在别的目录拉起会话。
+
+**方式三（持久化，可入库）：profile 配置文件**
 
 创建 `~/.codex/ollama-launch.config.toml`：
 
@@ -239,9 +305,9 @@ base_url = "http://localhost:11434/v1/"
 wire_api = "responses"
 ```
 
-启动：`codex --profile ollama-launch`。可选补充键（按本机 codex 版本文档为准）：`model_context_window = 65536`、`model_max_output_tokens`。
+启动：`codex --profile ollama-launch`。可选补充键（按本机 codex 版本文档为准）：`model_catalog_json`（官方示例含此键，由 `ollama launch` 生成的模型目录文件路径；纯手写 profile 可省略）、`model_context_window = 65536`、`model_max_output_tokens`。
 
-**方式三（兜底逃生门）：手动 provider + chat 协议**
+**方式四（兜底逃生门）：手动 provider + chat 协议**
 
 当 4.3 的 responses 图像风险兑现、或 Ollama / Codex 版本偏旧时启用。创建或编辑 `~/.codex/config.toml`：
 
@@ -261,7 +327,7 @@ export OLLAMA_API_KEY=ollama    # 占位值，Ollama 不校验内容，仅满足
 codex
 ```
 
-三条方式互不覆盖（配置文件不同、会话级 vs 持久级），推荐次序：**方式一验证通链路 → 方式二固化归档 → 方式三留作 4.3 风险兑现时的逃生门**。
+四种方式互不覆盖（会话级 vs 持久级、配置文件各不相同），推荐次序：**方式一验证通链路 → 方式三固化归档 → 方式四留作 4.3 风险兑现时的逃生门**（方式二适合不落盘的快速复验；方式一不可用时的官方替身即方式二）。
 
 ### 5.6 Codex 冒烟三回合
 
@@ -353,11 +419,14 @@ qwen3.5:9b@64k 实测驻留 ~6.9GB，本栈 ~11.5GB，两者之和超过 16GB �
 | 症状 | 根因 | 处置 |
 |---|---|---|
 | pull 成功但 run 报错 / 无视觉能力 | Ollama < 0.12.7 | 升级 Ollama（3.2） |
-| codex 报 404 / responses unsupported | Ollama 版本旧，无 `/v1/responses` | 升级 Ollama；或方式三 `wire_api="chat"` |
-| 模型答"我看不到图"（仅 codex 内） | responses 端点图像输入缺位（4.3） | 切方式三 chat；附录 B curl 隔离定位 |
+| codex 报 404 / responses unsupported | Ollama 版本旧，无 `/v1/responses` | 升级 Ollama；或方式四 `wire_api="chat"` |
+| 模型答"我看不到图"（仅 codex 内） | responses 端点图像输入缺位（4.3） | 切方式四 chat；附录 B curl 隔离定位 |
+| `codex: command not found`（WSL 内） | npm 全局 bin 不在 PATH / nvm 未生效 / 装到了 Windows 侧 | 重开终端或 `exec $SHELL`；`npm config get prefix` 核对 bin 路径；确认非 /mnt/c（5.4 第 3 步） |
+| curl `/v1/models` 通但 codex 连不上 | base_url 少 `/v1`、端口错、wire_api 拼写错 | 逐项核对 provider 配置三要素（5.5 连通原理）；对照第 9 章登录行排查配置加载 |
+| `codex --oss` 不识别该参数 | codex 版本过旧 | 升级 codex（5.4 第 2 步 B 路线重跑即升级）；或改用方式三 / 方式四 |
 | CLI 单独跑也看不到图 | 图像路径未附上 / 文件不存在 | 核对绝对路径；换 curl 直验 |
 | OOM / `ollama ps` 出现 CPU% | KV 过大（q8_0 未生效）或与另一模型同驻 | 查 override 四变量是否进服务进程（environ 取证法）；`ollama stop` 释放另一模型；降至 32k |
-| codex 强制要求 OpenAI 登录 | 未用 launch/profile 方式，或配置文件未加载 | 核对文件名与 `--profile` 参数一致；方式三需 `export OLLAMA_API_KEY` 占位 |
+| codex 强制要求 OpenAI 登录 | 未用 launch/--oss/profile 方式，或配置文件未加载 | 核对文件名与 `--profile` 参数一致；方式四需 `export OLLAMA_API_KEY` 占位 |
 | localhost 请求超时 / 407 | 代理劫持回环流量 | `NO_PROXY=127.0.0.1,localhost`（3.5） |
 | 工具调用 JSON 频繁损坏 | 8B 模型 schema 压力 / 误用 thinking 变体 | 任务粒度细化（一次一步）；确认用 `:8b` 而非 `:8b-thinking`；硬门 4 熔断 |
 | 模型名找不到 | codex 配置名与 `ollama list` 不一致 | 两边逐字符对齐（含冒号标签） |
@@ -386,7 +455,7 @@ Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 Environment="OLLAMA_KEEP_ALIVE=2h"
 ```
 
-**Codex profile 文件** `~/.codex/ollama-launch.config.toml`（方式二全文）：
+**Codex profile 文件** `~/.codex/ollama-launch.config.toml`（方式三全文）：
 
 ```toml
 model = "qwen3-vl:8b"
@@ -398,7 +467,7 @@ base_url = "http://localhost:11434/v1/"
 wire_api = "responses"
 ```
 
-**Codex 兜底文件** `~/.codex/config.toml`（方式三全文，风险兑现时启用）：
+**Codex 兜底文件** `~/.codex/config.toml`（方式四全文，风险兑现时启用）：
 
 ```toml
 model = "qwen3-vl:8b"
@@ -415,7 +484,7 @@ env_key = "OLLAMA_API_KEY"
 
 ```bash
 export NO_PROXY="127.0.0.1,localhost"
-export OLLAMA_API_KEY=ollama   # 仅方式三需要
+export OLLAMA_API_KEY=ollama   # 仅方式四需要
 ```
 
 ## 附录 B：curl 图像冒烟脚本（绕过 codex 层的隔离判定）
@@ -437,7 +506,8 @@ curl -s http://localhost:11434/api/chat -d "{
 
 ## 附录 C：依据与关联文档
 
-- **Ollama 官方 Codex CLI 集成文档**（docs.ollama.com/integrations/codex）：launch / profile / 手动三方式、`wire_api="responses"`、"Codex 建议 ≥64k 上下文"。
+- **Ollama 官方 Codex CLI 集成文档**（docs.ollama.com/integrations/codex）：launch / `--oss` / profile 三种接法、`wire_api="responses"`、"Codex 建议 ≥64k 上下文"。
+- **OpenAI Codex CLI 官方仓库与文档**（github.com/openai/codex；learn.chatgpt.com/codex/cli）：npm / 独立安装脚本（chatgpt.com/codex/install.sh）/ GitHub Release 二进制三种安装路线；当期版本 0.164.0（2026-10-23）；Windows 原生不支持，WSL 为官方 Linux 路径。
 - **Ollama 模型库 qwen3-vl 页**（ollama.com/library/qwen3-vl）：全家族尺寸与量化、256K 上下文、Ollama ≥0.12.7 要求、`ollama launch` 应用矩阵、默认采样参数。
 - **Ollama issue #13717**（2026-01）：Responses 端点图像输入缺位的记录，4.3 风险点来源。
 - **《CC 方案》v1.6**：四参数方法论（6.2）、实测显存校准法（8.1）、PATH 抢占教训（第 10 章）。
